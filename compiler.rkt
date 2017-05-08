@@ -120,17 +120,19 @@
     [(? fixnum?) e]
     [`(read) `(read)]
     [`(- ,(app pe-arith_ r1))   (cond [(fixnum? r1) (fx- 0 r1)]
-                                      [else '(- ,r1)])]
+                                      [else  `(- ,r1)])]
     [`(+ ,(app pe-arith_ r1) ,(app pe-arith_ r2)) (cond
                                                     [(fixnum? r1)
                                                      (match r2
                                                        [(? fixnum?) (+ r1 r2)]
                                                        [`(read) `(+ ,r1 (read))]
+                                                       [`(- ,e) `(+ ,r1 ,r2)]
                                                        [`(+ ,(app pe-arith_ s1) ,(app pe-arith_ s2))
                                                         (cond [(and (fixnum? s1) (fixnum? s2))     (+ r1 (+ s1 s2))]
                                                               [(fixnum? s2) `(+ ,(+ r1 s2) ,s1)]
                                                               [(fixnum? s1) '(+ ,(+ r1 s1) ,s2) ]
-                                                              [else `(+ ,r1 ,r2)])])]
+                                                              [else `(+ ,r1 ,r2)])]
+                                                       )]
                                                     [(fixnum? r2)
                                                      (match r1
                                                        [(? fixnum?) (+ r1 r2)]
@@ -146,11 +148,11 @@
     ))
 
 
-(pe-arith_ '(+ 1 (+ (read) 2)))
-(pe-arith_ '(+ (+ (read) 1) 2))
-
-(pe-arith_ '(+  2 (+ (read) (read))))
-(pe-arith_ '(+ (+ (read) (read)) 2))
+;(pe-arith_ '(+ 1 (+ (read) 2)))
+;(pe-arith_ '(+ (+ (read) 1) 2))
+(pe-arith_ '(+ 1 (- (- (read)))))
+;(pe-arith_ '(+  2 (+ (read) (read))))
+;(pe-arith_ '(+ (+ (read) (read)) 2))
 
 
 
