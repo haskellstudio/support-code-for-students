@@ -207,6 +207,12 @@ R1 ::= (program exp)
 
 |#
  
+(define (new-env) (list))
+
+(define (append env var value)
+  (cond
+    [(symbol? var) (cons (cons var value) env)]
+    [else (error `append "~a is not symbol" var)]))
 
 
 
