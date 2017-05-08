@@ -95,7 +95,7 @@
 
 
 ;(interp-R0 ast1.1)
-
+#| and
 (define (interp-R0 e)
   (match e
     [ (? fixnum?) e]
@@ -113,7 +113,7 @@
     ))
 
 
-
+ |#
 
 (define (pe-arith_ e)
   (match e
