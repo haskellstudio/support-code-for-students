@@ -215,15 +215,26 @@ R1 ::= (program exp)
     [else (error `append "~a is not symbol" var)]))
 
 
+(define (look-up env var)
+  (if
+    (null? env) (error `look-up "can not find ~a" var)
+    ( let ([head (car env)] [tail (cdr env)])
+       (if (pair? (car env))
+           (if (equal? (car head) var)
+               (cdr head)
+               (look-up tail var))
+           (error 'look-up "fial to look up ~a, bcz env is not a pair" var)))))
+
+(define gg (append
+            (append (new-env) 'a 1)
+            `b
+            2
+            ))
+(look-up gg 'a)
 
 
 
-
-
-
-
-
-
+ 
 
 
 
