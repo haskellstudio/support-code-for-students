@@ -1,6 +1,7 @@
 #lang racket
 (require racket/fixnum)
 (require "interp.rkt")
+(require rackunit)
 
 ;; This exports r0-passes, defined below, to users of this file.
 (provide r0-passes)
@@ -126,26 +127,30 @@
                                                        [(? fixnum?) (+ r1 r2)]
                                                        [`(read) `(+ ,r1 (read))]
                                                        [`(+ ,(app pe-arith_ s1) ,(app pe-arith_ s2))
-                                                        (cond [(and (fixnum? s1) (fixnum? s2))     (+ r1 (+ s1 s2))])
-                                                        (cond [(fixnum? s1) '(+ ,(+ r1 s1) ,s2) ])
-                                                        (cond [(fixnum? s2) `(+ ,(+ r1 s2) ,s1)])]
-                                                       )]
+                                                        (cond [(and (fixnum? s1) (fixnum? s2))     (+ r1 (+ s1 s2))]
+                                                              [(fixnum? s2) `(+ ,(+ r1 s2) ,s1)]
+                                                              [(fixnum? s1) '(+ ,(+ r1 s1) ,s2) ]
+                                                              [else `(+ ,r1 ,r2)])])]
                                                     [(fixnum? r2)
                                                      (match r1
                                                        [(? fixnum?) (+ r1 r2)]
                                                        [`(read) `(+  (read) ,r2)]
                                                        [`(+ ,(app pe-arith_ s1) ,(app pe-arith_ s2))
-                                                        (cond [(and (fixnum? s1) (fixnum? s2))     (+  (+ s1 s2) r1)])
-                                                        (cond [(fixnum? s1) `(+ ,s2 ,(+ r1 s1))  ])
-                                                        (cond [(fixnum? s2) `(+ ,s1 ,(+ r1 s2))])]
-                                                       )]
+                                                        (cond
+                                                          [(and (fixnum? s1) (fixnum? s2))     (+  (+ s1 s2) r2)]
+                                                          [(fixnum? s1) `(+ ,s2 ,(+ r2 s1))  ]
+                                                          [(fixnum? s2) `(+ ,s1 ,(+ r2 s2))]
+                                                          [else `(+ ,r1 ,r2)])])]
                                                     [(and (fixnum? r1) (fixnum? r2)) (fx+ r1 r2)]
                                                     [else `(+ ,r1 ,r2)]) ]
     ))
 
 
-;(pe-arith_ '(+ 1 (+ (read) 2)))
+(pe-arith_ '(+ 1 (+ (read) 2)))
 (pe-arith_ '(+ (+ (read) 1) 2))
+
+(pe-arith_ '(+  2 (+ (read) (read))))
+(pe-arith_ '(+ (+ (read) (read)) 2))
 
 
 
