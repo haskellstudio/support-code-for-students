@@ -199,20 +199,13 @@ residual ::= int | (+ int exp) | exp
 
 
 
-#|
-
-exp ::= int | (read) | (- exp) | (+ exp exp)
-| var | (let ([var exp]) exp)
-R1 ::= (program exp)
-
-|#
  
 (define (new-env) (list))
 
 (define (append env var value)
   (cond
     [(symbol? var) (cons (cons var value) env)]
-    [else (error `append "~a is not symbol" var)]))
+    [else (error `append: "~a is not symbol" var)]))
 
 
 (define (look-up env var)
@@ -225,18 +218,49 @@ R1 ::= (program exp)
                (look-up tail var))
            (error 'look-up "fial to look up ~a, bcz env is not a pair" var)))))
 
-(define gg (append
+#|
+(define g-var (append
             (append (new-env) 'a 1)
             `b
             2
             ))
-(look-up gg 'a)
+(look-up g-var 'a)
+|#
 
 
+#|
 
+exp ::= int | (read) | (- exp) | (+ exp exp)
+| var | (let ([var exp]) exp)
+R1 ::= (program exp)
+
+|#
  
+(define (i1 env )
+  (lambda (ast)
+    (define i1-env (i1 env) )
+    (match ast
+      [(? fixnum?) ast]
+      [`(read) (let ([r (read)])
+                 (if (fixnum? r)
+                     r
+                     (error `i1: "~a is not a fixnum" r)))]
+      [`(- ,(app i1-env e )) (- e)]
+      [`(+ ,(app i1-env e1) ,(app i1-env e2 ))   (+ e1 e2)]
+      [`(- ,(app i1-env e1) ,(app i1-env e2 ))   (- e1 e2)]
+      [(? symbol?)   (look-up env ast)]
+      [`(let ([,x ,(app i1-env e)]) ,body) ( (i1 (append env x e)) body)]
+      [`(program ,(app i1-env e)) e]
+      
+      )
+    ))
 
+( (i1 (new-env)) `(program
+(let ([x (+ 12 20)]) (+ 10 x))))
 
+( (i1 (new-env)) `(program
+(let ([x 32]) (+ (let ([x 10]) x) x))))
 
-
-
+( (i1 (new-env)) `(program (let ([x (read)])
+                             (let ([y (read)])
+                               (- x y)))))
