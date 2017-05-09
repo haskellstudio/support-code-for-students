@@ -256,10 +256,13 @@ R1 ::= (program exp)
     ))
 
 ( (i1 (new-env)) `(program
-(let ([x (+ 12 20)]) (+ 10 x))))
+                   (let ([x (+ 12 20)])
+                     (+ 10 x))))
 
 ( (i1 (new-env)) `(program
-(let ([x 32]) (+ (let ([x 10]) x) x))))
+                   (let ([x 32])
+                     (+ (let ([x 10]) x)
+                        x))))
 
 ( (i1 (new-env)) `(program (let ([x (read)])
                              (let ([y (read)])
