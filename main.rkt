@@ -3,6 +3,10 @@
 
 (require rackunit)
 
+(require "interp.rkt")
+(require "compiler.rkt") 
+(require "utilities.rkt")
+
 #|
  exp ::= int | (read) | (- exp) | ( + exp exp)
  R0  ::= (program exp)
@@ -202,10 +206,10 @@ residual ::= int | (+ int exp) | exp
  
 (define (new-env) (list))
 
-(define (append env var value)
+(define (append-env env var value)
   (cond
     [(symbol? var) (cons (cons var value) env)]
-    [else (error `append: "~a is not symbol" var)]))
+    [else (error `append-env: "~a is not symbol" var)]))
 
 
 (define (look-up env var)
@@ -219,8 +223,8 @@ residual ::= int | (+ int exp) | exp
            (error 'look-up "fial to look up ~a, bcz env is not a pair" var)))))
 
 #|
-(define g-var (append
-            (append (new-env) 'a 1)
+(define g-var (append-env
+            (append-env (new-env) 'a 1)
             `b
             2
             ))
@@ -249,12 +253,12 @@ R1 ::= (program exp)
       [`(+ ,(app i1-env e1) ,(app i1-env e2 ))   (+ e1 e2)]
       [`(- ,(app i1-env e1) ,(app i1-env e2 ))   (- e1 e2)]
       [(? symbol?)   (look-up env ast)]
-      [`(let ([,x ,(app i1-env e)]) ,body) ( (i1 (append env x e)) body)]
+      [`(let ([,x ,(app i1-env e)]) ,body) ( (i1 (append-env env x e)) body)]
       [`(program ,(app i1-env e)) e]
       
       )
     ))
-
+#|
 ( (i1 (new-env)) `(program
                    (let ([x (+ 12 20)])
                      (+ 10 x))))
@@ -267,3 +271,94 @@ R1 ::= (program exp)
 ( (i1 (new-env)) `(program (let ([x (read)])
                              (let ([y (read)])
                                (- x y)))))
+|#
+
+(define-syntax ++
+  (syntax-rules ()
+    ((_ x)   (begin (set! x (+ x 1)) x))
+    ((_ x n) (begin (set! x (+ x n)) x))))
+
+
+
+(define (gen-var var index)
+  (format "~a.~a" var index))
+
+
+
+(define (uniquify env index  ast)
+  (match ast
+    [`(let ([,var ,val]) ,body)  (let ([new-var (gen-var var index)])
+                                   `(let ([,new-var ,val])
+                                      ,(uniquify (append-env env var new-var) (++ index) body )))   ]
+    [(? fixnum?) ast]
+    [(? symbol?) (look-up env ast)]
+    [`(+ ,e1 ,e2) `(+ ,(uniquify env index e1) ,(uniquify env index e2)) ]
+    [`(program ,e) `(program ,(uniquify env index e))]
+    [`(- ,e) `(- ,(uniquify env index e))]
+    )
+  )
+
+
+#|
+(uniquify
+ (new-env)
+ 0
+ `(program
+   (let ([x 32])
+     (+ (let ([x 10]) (- x))
+        x)))
+ )
+|#
+
+
+
+
+#|
+newly flattened expression
+
+
+assignment statements
+
+
+variables
+|#
+ 
+
+(define (flatten ast asgns vars)
+  (match ast
+    [`(program ,e) (flatten e asgns vars)]
+    [(? fixnum?) (values ast asgns vars)]
+    [`(- ,e)  (let-values ([ (f a v) (flatten e asgns vars)] )
+                1)]
+
+    
+    ))
+
+(define (append-list l r)
+  (cond
+    [(or (not (list? l)) (not (list? r))) (error `append-list: "~a ~a not a list" l r)]
+    [(null? l) r]
+    [else (append-list (cdr l) (cons (car l)))]))
+
+
+
+(define (flat exp)
+  (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    ;`(program ,vars ,asgns `(return ,flattened))
+    `(main  ,(append vars (append asgns `(return ,flattened))))
+    )
+  )
+
+
+(flat  1)
+
+
+
+
+
+
+
+
+
+
+

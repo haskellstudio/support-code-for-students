@@ -150,7 +150,7 @@
 
 ;(pe-arith_ '(+ 1 (+ (read) 2)))
 ;(pe-arith_ '(+ (+ (read) 1) 2))
-(pe-arith_ '(+ 1 (- (- (read)))))
+;(pe-arith_ '(+ 1 (- (- (read)))))
 ;(pe-arith_ '(+  2 (+ (read) (read))))
 ;(pe-arith_ '(+ (+ (read) (read)) 2))
 
