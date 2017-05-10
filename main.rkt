@@ -311,6 +311,15 @@ R1 ::= (program exp)
 |#
 
 
+#|
+(uniquify
+(new-env)
+0
+`(let ([x 32])
+  (+ (+ x 2) (+ x 3)))
+
+ )
+|#
 
 
 #|
@@ -322,35 +331,71 @@ assignment statements
 
 variables
 |#
- 
 
-(define (flatten ast asgns vars)
+(define gen-sys-index 0)
+(define (gen-sys)
+  (let ( [return (format "g.~a" gen-sys-index)])
+    (++ gen-sys-index)
+    return
+    ))
+
+(define (flatten ast asgns vars )
   (match ast
     [`(program ,e) (flatten e asgns vars)]
     [(? fixnum?) (values ast asgns vars)]
-    [`(- ,e)  (let-values ([ (f a v) (flatten e asgns vars)] )
-                1)]
+    [`(- ,e)  (let ([tmp-var (gen-sys )])
+                (let-values ([ (return a v) (flatten e asgns vars)] )
+                  (values tmp-var (append a `(  (assign ,tmp-var (- ,return)) )) (append v `(,tmp-var)))))
+                ]
+    [`(+ ,e1 ,e2) (let ([tmp-var (gen-sys)])
+                    (let-values ([(return1 a1 v1) (flatten e2 asgns vars)])
+                        (let-values ([(return2 a2 v2) (flatten e1 a1 v1)])
+                          (values tmp-var
+                                  (append a2 `( (assign ,tmp-var (+ ,return2 ,return1) )))
+                                  (append v2 `(tmp-var))))))]
+    [`(let ([,var ,val] ,body)) (let-values  ([ (return codes vs) (flatten val asgns vars)])
+                                  (values var
+                                          (append codes `( (assign ,var ,return)))
+                                          (append vs `(,var))))    ]
 
-    
-    ))
-
-(define (append-list l r)
-  (cond
-    [(or (not (list? l)) (not (list? r))) (error `append-list: "~a ~a not a list" l r)]
-    [(null? l) r]
-    [else (append-list (cdr l) (cons (car l)))]))
+    [`(read) (let ([tmp-var (gen-sys)])
+               (values tmp-var
+                       (append asgns `( (assign ,tmp-var ,ast)))
+                       (append vars `(,tmp-var)))
+               )]
+    [(? symbol?)  (values ast asgns vars)]))
 
 
+
+(define (print-vars vars)
+  (map (lambda(var)
+         (print (format "~a " var)))
+       vars)
+  (newline))
+
+(define (print-asgns asgns)
+  (map (lambda(asgn)
+         (print (format "~a " asgn))
+         (newline))
+       asgns))
 
 (define (flat exp)
   (let-values ([(flattened asgns vars) (flatten exp `() `())])
-    ;`(program ,vars ,asgns `(return ,flattened))
-    `(main  ,(append vars (append asgns `(return ,flattened))))
-    )
-  )
+    ;`(program ,vars ,asgns (return ,flattened))
+    (print-vars vars)
+    (print-asgns asgns)
+    (print (format "return ~a" flattened))
+    ;`(main  ,(append vars (append asgns `(return ,flattened))))
+  ))
 
 
-(flat  1)
+;(flat  `(- (- (- 1))))
+;(flat `(+ 52 (- (- (- (- 1))))))
+;(flat `( let ([x (+ 52 (- (- (- (- 1)))))] (+ x 2))))
+(flat `( let ([x (+ 52 (- (- (- (- (read))))))] (+ x 2))))
+
+
+;(flat `(- 10))
 
 
 
