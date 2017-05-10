@@ -281,7 +281,7 @@ R1 ::= (program exp)
 
 
 (define (gen-var var index)
-  (format "~a.~a" var index))
+  (string->symbol ( format "~a.~a" var index)))
 
 
 
@@ -336,14 +336,14 @@ variables
 (define (gen-sys)
   (let ( [return (format "g.~a" gen-sys-index)])
     (++ gen-sys-index)
-    return
+    (string->symbol return)
     ))
 
 (define (flatten ast asgns vars )
   (match ast
     [`(program ,e) (flatten e asgns vars)]
     [(? fixnum?) (values ast asgns vars)]
-    [`(- ,e)  (let ([tmp-var (gen-sys )])
+    [`(- ,e)  (let ([tmp-var (gen-sys)])
                 (let-values ([ (return a v) (flatten e asgns vars)] )
                   (values tmp-var (append a `(  (assign ,tmp-var (- ,return)) )) (append v `(,tmp-var)))))
                 ]
@@ -352,11 +352,16 @@ variables
                         (let-values ([(return2 a2 v2) (flatten e1 a1 v1)])
                           (values tmp-var
                                   (append a2 `( (assign ,tmp-var (+ ,return2 ,return1) )))
-                                  (append v2 `(tmp-var))))))]
-    [`(let ([,var ,val] ,body)) (let-values  ([ (return codes vs) (flatten val asgns vars)])
-                                  (values var
-                                          (append codes `( (assign ,var ,return)))
-                                          (append vs `(,var))))    ]
+                                  (append v2 `(,tmp-var))))))]
+    [`(let ([,var ,val]) ,body) (let-values  ([ (return codes vs) (flatten val asgns vars)])
+                                  
+                                  (let-values ([(rb codesb varsb) (flatten
+                                                                   body
+                                                                   (append  codes `( (assign ,var ,return) ))
+                                                                   vs)])
+                                    (values rb
+                                            codesb
+                                            (append varsb `(,var)))))    ]
 
     [`(read) (let ([tmp-var (gen-sys)])
                (values tmp-var
@@ -391,19 +396,83 @@ variables
 
 ;(flat  `(- (- (- 1))))
 ;(flat `(+ 52 (- (- (- (- 1))))))
-;(flat `( let ([x (+ 52 (- (- (- (- 1)))))] (+ x 2))))
-(flat `( let ([x (+ 52 (- (- (- (- (read))))))] (+ x 2))))
-
+;(flat `( let ([x (+ 52 (- (- (- (- 1)))))]) (+ x 2)))
+;(flat `( let ([x (+ 52 (- (- (- (- (read))))))] (+ x 2))))
+;(flat `(+ 2 10))
 
 ;(flat `(- 10))
 
+;(flat `( let ([x (- 1)] 1)))
 
 
 
+(define (select-instructions codes x64s)
+  (if (empty? codes) x64s
+      (let ([code (car codes)]
+            [restCodes (cdr codes)])
+        (match code
+          [`(assign ,var ,val)
+           (match val
+             [(? fixnum?) (select-instructions restCodes (append x64s `((movq (int ,val) (var ,var)))))]
+             [(? symbol?) (select-instructions restCodes (append x64s `((movq (var ,val) (var ,var)))))]
+             [`(read)     (select-instructions restCodes (append x64s `((callq read_int)
+                                                                        (movq (reg rax) (var ,var))) ))]
+             [`(- ,e)      (select-instructions restCodes (append x64s (let ([varOrVal (if (symbol? e)
+                                                                                          `var
+                                                                                          `int)])
+                                                                        `((movq (,varOrVal ,e ) (var ,var))
+                                                                          (negq (var ,var))))))]
+
+             [`(+ ,e1 ,e2 ) (select-instructions restCodes (append x64s (letrec ([type1 (if (symbol? e1) `var `int)]
+                                                                              [type2 (if (symbol? e2) `var `int)]
+                                                                              [needNotMove (or (eqv? e1 var) (eqv? e2 var))]
+                                                                              [theOneNeedMove (if(eqv? e1 var) e2 e1)]
+                                                                              [theOneNeedMoveType (if(eqv? e1 var) type2 type1)])
+                                                                              (if needNotMove
+                                                                                  `((addq (,theOneNeedMoveType ,theOneNeedMove) (var ,var)))
+                                                                                  `((movq (,type1 ,e1) (var ,var))
+                                                                                    (addq (,type2 ,e2) (var ,var)))
+                                                                                  ))))]
+             
+             )]))))
 
 
 
+;(select-instructions `((assign g.0 (- 1)) (assign x g.0) ) `())
 
+;(select-instructions `(  (assign x (+ 10 x)) ) `())  ; 1, (assign x (+ 10 x)) ⇒ (addq (int 10) (var x))   do not need move!!!
+
+
+(define (flat-select exp)
+  (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    ;`(program ,vars ,asgns (return ,flattened))
+
+    
+    ;(print-vars vars)
+    (print "------") (newline)
+    ;(print-asgns asgns)
+    (print-asgns (select-instructions asgns `()) )
+    (print "------") (newline)
+    ;(print (format "return ~a" flattened))
+
+
+    
+    ;`(main  ,(append vars (append asgns `(return ,flattened))))
+  ))
+
+
+;(flat-select  `(- (- (- 1))))
+;(flat-select `(+ 52 (- (- (- (- 1))))))
+;(flat-select `( let ([x (+ 52 (- (- (- (- 1)))))] (+ x 2))))
+(flat-select `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ 2 2))  )
+;(flflat-selectat `(+ 2 10))
+
+;(flat-select `(- 10))
+
+
+; todo 
+;       1, (let ((x (+ 2 2)) 1))     ((x (+ 2 2))) do not need compute
+;       2, do not support (let ([x 2][y 3]) (+ x y))
 
 
 
