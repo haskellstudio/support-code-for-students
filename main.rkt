@@ -496,16 +496,16 @@ variables
 
 (define (assign-homes inst offsetMaps)
   (match inst
-    [`(callq ,label) `( ,inst)]
+    [`(callq ,label) inst]
     [`(,unaryOp ,arg ) (if (eqv? (car arg) `var)
-                           `(,unaryOp (#|local var|#rbp,(look-up offsetMaps (cadr arg))))
-                           inst)] ;`(,inst)
-    [`(,binary-op ,arg1 ,arg2) `(,binary-op ,(if (eqv? (car arg1) `var)
-                                               `(rbp ,(look-up offsetMaps (cadr arg1)))
+                           (list `(,unaryOp (#|local var|#l_ rbp,(look-up offsetMaps (cadr arg)))))
+                           (list inst))] ;`(,inst)
+    [`(,binary-op ,arg1 ,arg2) (list `(,binary-op ,(if (eqv? (car arg1) `var)
+                                               `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg1)))
                                                arg1)
                                            ,(if (eqv? (car arg2) `var)
-                                                `(rbp ,(look-up offsetMaps (cadr arg2)))
-                                                arg2))]
+                                                `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg2)))
+                                                arg2)))]
     ))
 
 
@@ -513,13 +513,13 @@ variables
 
 (define (map-to-ebp exp)
   (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    ;(set! asgns (append asgns `(return flattened)))
     (let ([codes (select-instructions asgns `())])
       (let ([var-maps (get-var-maps vars -8)]
           [res `()])
-        ;var-maps
-         
-        (map (lambda (code) (set! res (cons (assign-homes code var-maps) res))) codes)
-        res))))
+        (map (lambda (code) (set! res (append res  `(,(assign-homes code var-maps)) ))) codes)
+        (print-asgns res)
+        ))))
 
 
     ;(print-vars vars)
@@ -532,11 +532,39 @@ variables
 
 
 
-
+;(map-to-ebp `(+ 1 (read)))
 
 ;(map-to-ebp `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
 
-(define (patch-instructions ex)
-  ex
-  )
 
+
+(define (patch-instructions ex)
+  (print ex)
+  (newline)
+  (match ex
+    [`(,op ,arg1 ,arg2) (if (and (equal? (car arg1) `l_) (equal? (car arg2) `l_))
+                            (list `(movq ,arg1 (reg rax))
+                                  `(,op (reg rax) ,arg2))
+                            (list ex)) ]
+    [else (list ex)])
+  )
+;(movq (l_ rbp -8) (l_ rbp -16)) "
+
+
+(define (patch exp)
+  (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    ;(set! asgns (append asgns `(return flattened)))
+    (let ([codes (select-instructions asgns `())])
+      (let ([var-maps (get-var-maps vars -8)]
+          [res `()])
+        (map (lambda (code) (set! res (append res  (assign-homes code var-maps) ))) codes)
+
+        (let ([patched `()])
+          (map (lambda (code) (set! patched (append patched (patch-instructions code))  ) )res)
+          patched)
+        
+        ;(print-asgns res)
+        ))))
+
+
+(patch `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
