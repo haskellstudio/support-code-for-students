@@ -376,13 +376,15 @@ variables
   (map (lambda(var)
          (print (format "~a " var)))
        vars)
+  (newline)
   (newline))
 
 (define (print-asgns asgns)
   (map (lambda(asgn)
          (print (format "~a " asgn))
          (newline))
-       asgns))
+       asgns)
+  (newline))
 
 (define (flat exp)
   (let-values ([(flattened asgns vars) (flatten exp `() `())])
@@ -445,26 +447,23 @@ variables
 
 (define (flat-select exp)
   (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    
     ;`(program ,vars ,asgns (return ,flattened))
 
-    
-    ;(print-vars vars)
-    (print "------") (newline)
+    (print-vars vars)
     ;(print-asgns asgns)
     (print-asgns (select-instructions asgns `()) )
-    (print "------") (newline)
-    ;(print (format "return ~a" flattened))
-
-
     
-    ;`(main  ,(append vars (append asgns `(return ,flattened))))
+    (print (format "return ~a" flattened))
+
+
   ))
 
 
 ;(flat-select  `(- (- (- 1))))
 ;(flat-select `(+ 52 (- (- (- (- 1))))))
 ;(flat-select `( let ([x (+ 52 (- (- (- (- 1)))))] (+ x 2))))
-(flat-select `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ 2 2))  )
+;(flat-select `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
 ;(flflat-selectat `(+ 2 10))
 
 ;(flat-select `(- 10))
@@ -473,6 +472,55 @@ variables
 ; todo 
 ;       1, (let ((x (+ 2 2)) 1))     ((x (+ 2 2))) do not need compute
 ;       2, do not support (let ([x 2][y 3]) (+ x y))
+
+
+
+(define (get-var-maps vars init) ;init -8 byte = 64bit   
+  (let ([res `()]
+        [i 1])
+    (map (lambda (var)
+           (begin
+                  (set! res (cons `(,var ,(* init i)) res))
+                  (++ i)))
+         vars)
+    res))
+
+
+
+(define (assign-homes inst offsetMaps)
+  (match inst
+    [`(callq ,label) `( (,inst))]
+    [`(,unaryOp ,arg ) `( (,inst))]
+    [`(,binary-op ,arg1 ,arg2) `((,inst))]
+    ))
+
+
+
+
+(define (map-to-ebp exp)
+  (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    (let ([codes (select-instructions asgns `())])
+      (let ([var-maps (get-var-maps vars -8)]
+          [res `()])
+     
+      (map (lambda (code)
+             (set! res (cons (assign-homes code var-maps) res)))
+           codes)
+      res))))
+
+    ;(print-vars vars)
+    
+   
+    ;(print-asgns (select-instructions asgns `()) )
+    
+    ;(print (format "return ~a" flattened))
+
+
+
+
+
+
+(map-to-ebp `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
 
 
 
