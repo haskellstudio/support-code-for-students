@@ -216,10 +216,17 @@ residual ::= int | (+ int exp) | exp
   (if
     (null? env) (error `look-up "can not find ~a" var)
     ( let ([head (car env)] [tail (cdr env)])
-       (if (pair? (car env))
-           (if (equal? (car head) var)
-               (cdr head)
-               (look-up tail var))
+       (if (pair? head)
+           (begin
+             ;(print (car head))
+             ;(newline)
+             ;(print var)
+             ;(newline)
+             (if (equal? (car head) var)
+                 (cadr head)
+                 (look-up tail var))
+             )
+
            (error 'look-up "fial to look up ~a, bcz env is not a pair" var)))))
 
 #|
@@ -399,7 +406,7 @@ variables
 ;(flat  `(- (- (- 1))))
 ;(flat `(+ 52 (- (- (- (- 1))))))
 ;(flat `( let ([x (+ 52 (- (- (- (- 1)))))]) (+ x 2)))
-;(flat `( let ([x (+ 52 (- (- (- (- (read))))))] (+ x 2))))
+;(flat `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2)))
 ;(flat `(+ 2 10))
 
 ;(flat `(- 10))
@@ -489,9 +496,16 @@ variables
 
 (define (assign-homes inst offsetMaps)
   (match inst
-    [`(callq ,label) `( (,inst))]
-    [`(,unaryOp ,arg ) `( (,inst))]
-    [`(,binary-op ,arg1 ,arg2) `((,inst))]
+    [`(callq ,label) `( ,inst)]
+    [`(,unaryOp ,arg ) (if (eqv? (car arg) `var)
+                           `(,unaryOp (#|local var|#rbp,(look-up offsetMaps (cadr arg))))
+                           inst)] ;`(,inst)
+    [`(,binary-op ,arg1 ,arg2) `(,binary-op ,(if (eqv? (car arg1) `var)
+                                               `(rbp ,(look-up offsetMaps (cadr arg1)))
+                                               arg1)
+                                           ,(if (eqv? (car arg2) `var)
+                                                `(rbp ,(look-up offsetMaps (cadr arg2)))
+                                                arg2))]
     ))
 
 
@@ -502,11 +516,11 @@ variables
     (let ([codes (select-instructions asgns `())])
       (let ([var-maps (get-var-maps vars -8)]
           [res `()])
-     
-      (map (lambda (code)
-             (set! res (cons (assign-homes code var-maps) res)))
-           codes)
-      res))))
+        ;var-maps
+         
+        (map (lambda (code) (set! res (cons (assign-homes code var-maps) res))) codes)
+        res))))
+
 
     ;(print-vars vars)
     
@@ -520,7 +534,9 @@ variables
 
 
 
-(map-to-ebp `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
+;(map-to-ebp `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
 
-
+(define (patch-instructions ex)
+  ex
+  )
 
