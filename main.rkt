@@ -6,6 +6,8 @@
 (require "interp.rkt")
 (require "compiler.rkt") 
 (require "utilities.rkt")
+(require graph)
+
 
 #|
  exp ::= int | (read) | (- exp) | ( + exp exp)
@@ -621,7 +623,7 @@ variables
     (let ([w (written-by instr)]
           [r (read-by instr)]
           [after (car livelist)])
-      (let ([l-before (remove-duplicates (append (remq* w after) r))])
+      (let ([l-before (remove-duplicates (append (remv* w after) r))])
         (cons l-before livelist))))
   
   (list* 'program (list vars (cdr (foldr helper '(()) code))) code))
@@ -629,7 +631,32 @@ variables
 (uncover-live manual-test)
 
 
+(define (build-interference prog)
+  (match-define `(program (,vars ,live-afters) ,code ...) prog)
+  (define (make-adjacencies excludes live-after)
+    (foldr
+     (lambda (v prev)
+       (cond [(list? (memq v excludes)) prev]
+             [else (cons (list (car excludes) v) prev)]))
+     null
+     live-after))
+  (define (callq-helper label)
+    null)
+  (define (helper live-after instr prev)
+    (match instr
+      [`(movq (var ,s) (var ,d))
+       (append prev (make-adjacencies (list d s) live-after))]
+      [`(,_ ,_ (var ,d))
+       (append prev (make-adjacencies (list d) live-after))]
+      [`(callq ,label)
+       prev]
+      [_ prev]))
+  (list* 'program
+         (list vars
+               (undirected-graph (filter-not null? (foldl helper '() live-afters code))))
+         code))
 
-
-
+(define (get )
+  (λ(i)
+    i))
 
