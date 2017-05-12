@@ -496,7 +496,7 @@ variables
 
 (define (assign-homes inst offsetMaps)
   (match inst
-    [`(callq ,label) inst]
+    [`(callq ,label) (list inst)]
     [`(,unaryOp ,arg ) (if (eqv? (car arg) `var)
                            (list `(,unaryOp (#|local var|#l_ rbp,(look-up offsetMaps (cadr arg)))))
                            (list inst))] ;`(,inst)
@@ -539,16 +539,18 @@ variables
 
 
 (define (patch-instructions ex)
+  #|
   (print ex)
   (newline)
+  |#
   (match ex
     [`(,op ,arg1 ,arg2) (if (and (equal? (car arg1) `l_) (equal? (car arg2) `l_))
                             (list `(movq ,arg1 (reg rax))
                                   `(,op (reg rax) ,arg2))
                             (list ex)) ]
-    [else (list ex)])
+    [else  (list ex)])
   )
-;(movq (l_ rbp -8) (l_ rbp -16)) "
+;(movq (l_ rbp -8) (l_ rbp -16))"
 
 
 (define (patch exp)
@@ -557,14 +559,77 @@ variables
     (let ([codes (select-instructions asgns `())])
       (let ([var-maps (get-var-maps vars -8)]
           [res `()])
+        
         (map (lambda (code) (set! res (append res  (assign-homes code var-maps) ))) codes)
-
+        
         (let ([patched `()])
           (map (lambda (code) (set! patched (append patched (patch-instructions code))  ) )res)
           patched)
-        
+       
         ;(print-asgns res)
         ))))
 
 
-(patch `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2)))
+;(patch `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2)))
+
+
+
+
+
+(define raw-uncover-test '(program (let ([v 1]) (let ([w 46]) (let ([x (+ v 7)]) (let ([y (+ 4 w)]) (let ([z (+ x w)]) (+ z (- y)))))))))
+;(define test (select-instructions ((flatten-R1) raw-uncover-test)))
+
+(define manual-test '(program (v w x y z t.1 t.2)
+                              (movq (int 1) (var v))
+                              (movq (int 46) (var w))
+                              (movq (var v) (var x))
+                              (addq (int 7) (var x))
+                              (movq (var x) (var y))
+                              (addq (int 4) (var y))
+                              (movq (var x) (var z))
+                              (addq (var w) (var z))
+                              (movq (var y) (var t.1))
+                              (negq (var t.1))
+                              (movq (var z) (var t.2))
+                              (addq (var t.1) (var t.2))
+                              (movq (var t.2) (reg rax))))
+
+(define read-by
+  (match-lambda
+    [(or `(subq (var ,e1) (var ,e2))
+         `(addq (var ,e1) (var ,e2)))
+     (list e1 e2)]
+    [(or `(addq (int ,_) (var ,e))
+         `(subq (int ,_) (var ,e))
+         `(movq (var ,e) ,_)
+         `(negq (var ,e)))
+     (list e)]
+    [_ null]
+    ))
+
+(define written-by
+  (match-lambda
+    [(or `(negq (var ,e))
+         `(,_ ,_ (var ,e)))
+     (list e)]
+    [_ null]
+    ))
+
+(define (uncover-live prog)
+  (match-define `(program ,vars ,code ...) prog)
+  (define (helper instr livelist)
+    (let ([w (written-by instr)]
+          [r (read-by instr)]
+          [after (car livelist)])
+      (let ([l-before (remove-duplicates (append (remq* w after) r))])
+        (cons l-before livelist))))
+  
+  (list* 'program (list vars (cdr (foldr helper '(()) code))) code))
+
+(uncover-live manual-test)
+
+
+
+
+
+
