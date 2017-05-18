@@ -656,7 +656,7 @@ variables
 (define (uncover_live exp)
   (match-define `(program ,vars ,codes ...) exp)
   ;(print codes)
-  (list `program `(,vars ,(cdr (foldr get-live-regs `(()) codes))) codes))
+  (list* `program `(,vars ,(cdr (foldr get-live-regs `(()) codes))) codes))
 
 
 
@@ -666,10 +666,6 @@ variables
 
 (define (build-interference prog)
   (match-define `(program (,vars ,live-afters) ,code ...) prog)
-  (begin
-    (print (length live-afters))
-    (newline)
-    (print (length (car code))))
   (define (make-adjacencies excludes live-after)
     (foldr
      (lambda (v prev)
@@ -690,7 +686,7 @@ variables
       [_ prev]))
   (list* 'program
          (list vars
-               (undirected-graph (filter-not null? (foldl helper '() live-afters (car code)))))
+               (undirected-graph (filter-not null?(foldl helper '() live-afters  code))))
          code))
 
 ;(uncover_live manual-test)
