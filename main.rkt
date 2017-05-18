@@ -596,43 +596,80 @@ variables
                               (addq (var t.1) (var t.2))
                               (movq (var t.2) (reg rax))))
 
-(define read-by
-  (match-lambda
-    [(or `(subq (var ,e1) (var ,e2))
-         `(addq (var ,e1) (var ,e2)))
-     (list e1 e2)]
-    [(or `(addq (int ,_) (var ,e))
-         `(subq (int ,_) (var ,e))
-         `(movq (var ,e) ,_)
-         `(negq (var ,e)))
-     (list e)]
-    [_ null]
-    ))
 
-(define written-by
-  (match-lambda
-    [(or `(negq (var ,e))
-         `(,_ ,_ (var ,e)))
-     (list e)]
-    [_ null]
-    ))
 
-(define (uncover-live prog)
-  (match-define `(program ,vars ,code ...) prog)
-  (define (helper instr livelist)
-    (let ([w (written-by instr)]
-          [r (read-by instr)]
-          [after (car livelist)])
-      (let ([l-before (remove-duplicates (append (remv* w after) r))])
-        (cons l-before livelist))))
+
+    (define (free-vars a)
+      (match a
+	 [`(var ,x) (list x)]
+	 [`(reg ,r) (list r)]
+	 [`(deref ,r ,i) (list r)]
+	 [`(int ,n) (list)]
+	 [else (error "free-vars, unhandled" a)]))
+
+    (define (get-read-vars instr)
+      (match instr
+         [`(movq ,s ,d) (free-vars s)]
+	 [(or `(addq ,s ,d) `(subq ,s ,d) `(imulq ,s ,d)) 
+	  (set-union (free-vars s) (free-vars d))]
+	 [`(negq ,d) (free-vars d)]
+	 [`(callq ,f) (set)]
+	 [else (error "read-vars unmatched" instr)]
+	 ))
   
-  (list* 'program (list vars (cdr (foldr helper '(()) code))) code))
+    (define (get-write-vars instr)
+      (match instr
+         [`(movq ,s ,d) (free-vars d)]
+	 [(or `(addq ,s ,d) `(subq ,s ,d) `(imulq ,s ,d)) 
+	  (free-vars d)]
+	 [`(negq ,d) (free-vars d)]
+	 [`(callq ,f) caller-save]
+	 [else (error "write-vars unmatched" instr)]
+	 ))
 
-(uncover-live manual-test)
+
+
+(define (get-live-regs instr live-reg-list)
+  (let ([w (get-write-vars instr)]
+        [r (get-read-vars  instr)]
+        [the-nxt-line-lives-regs (car live-reg-list)])
+   ; (print instr)
+   ; (newline)
+    (cons (remove-duplicates
+           (append (remv* w the-nxt-line-lives-regs) r))
+          live-reg-list)))
+
+(define (rmv-at lst index)
+  (define (rmv-at-t lst accu)
+    (if (>= accu index )
+        `()
+        (cons (car lst) (rmv-at-t (cdr lst) (+ accu 1)))))
+  (rmv-at-t lst 1)
+  )
+
+(define (rmv-tail lst)
+  (let ([len (length lst)])
+    (rmv-at lst len)))
+
+
+
+(define (uncover_live exp)
+  (match-define `(program ,vars ,codes ...) exp)
+  ;(print codes)
+  (list `program `(,vars ,(cdr (foldr get-live-regs `(()) codes))) codes))
+
+
+
+
+;((v w x y z t.1 t.2) ((v) (w v) (w x) (w x) (w x y) (y w x) (y w z) (z y) (z t.1) (t.1 z) (t.1 t.2) (t.2) ()))
 
 
 (define (build-interference prog)
   (match-define `(program (,vars ,live-afters) ,code ...) prog)
+  (begin
+    (print (length live-afters))
+    (newline)
+    (print (length (car code))))
   (define (make-adjacencies excludes live-after)
     (foldr
      (lambda (v prev)
@@ -653,10 +690,11 @@ variables
       [_ prev]))
   (list* 'program
          (list vars
-               (undirected-graph (filter-not null? (foldl helper '() live-afters code))))
+               (undirected-graph (filter-not null? (foldl helper '() live-afters (car code)))))
          code))
 
-(define (get )
-  (λ(i)
-    i))
+;(uncover_live manual-test)
+
+
+(build-interference  (uncover_live manual-test))
 
