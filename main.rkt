@@ -215,6 +215,7 @@ residual ::= int | (+ int exp) | exp
 
 
 (define (look-up env var)
+ 
   (if
     (null? env) (error `look-up "can not find ~a" var)
     ( let ([head (car env)] [tail (cdr env)])
@@ -225,7 +226,9 @@ residual ::= int | (+ int exp) | exp
              ;(print var)
              ;(newline)
              (if (equal? (car head) var)
-                 (cadr head)
+                 (if (equal? (cadr head) `reg)
+                     (cddr head)
+                     (cadr head))
                  (look-up tail var))
              )
 
@@ -413,7 +416,7 @@ variables
 
 ;(flat `(- 10))
 
-;(flat `( let ([x (- 1)] 1)))
+;(flat `( let ([x (- 1)]) 1))
 
 
 
@@ -428,6 +431,7 @@ variables
              [(? symbol?) (select-instructions restCodes (append x64s `((movq (var ,val) (var ,var)))))]
              [`(read)     (select-instructions restCodes (append x64s `((callq read_int)
                                                                         (movq (reg rax) (var ,var))) ))]
+             
              [`(- ,e)      (select-instructions restCodes (append x64s (let ([varOrVal (if (symbol? e)
                                                                                           `var
                                                                                           `int)])
@@ -445,10 +449,16 @@ variables
                                                                                     (addq (,type2 ,e2) (var ,var)))
                                                                                   ))))]
              
-             )]))))
+             )]
+          [`(return ,e) (select-instructions restCodes (append x64s (let ([varOrVal (if (symbol? e)
+                                                                                          `var
+                                                                                          `int)])
+                                                                      `((movq  (,varOrVal ,e) (reg rax))
+                                                                        (retn)))))]
+          ))))
 
-
-
+;(flat `( let ([x (- 1)]) 1))
+;(select-instructions (flat `( let ([x (- 1)]) 1)) `())
 ;(select-instructions `((assign g.0 (- 1)) (assign x g.0) ) `())
 
 ;(select-instructions `(  (assign x (+ 10 x)) ) `())  ; 1, (assign x (+ 10 x)) ⇒ (addq (int 10) (var x))   do not need move!!!
@@ -497,6 +507,7 @@ variables
 
 
 (define (assign-homes inst offsetMaps)
+  
   (match inst
     [`(callq ,label) (list inst)]
     [`(,unaryOp ,arg ) (if (eqv? (car arg) `var)
@@ -508,6 +519,7 @@ variables
                                            ,(if (eqv? (car arg2) `var)
                                                 `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg2)))
                                                 arg2)))]
+    [`(retn) inst]
     ))
 
 
@@ -599,6 +611,10 @@ variables
 
 
 
+(define caller-save-registers '(rax rdx rcx rsi rdi r8 r9 r10 r11))
+(define callee-save-registers '(rsp rbp r12 r13 r14 r15))
+
+
     (define (free-vars a)
       (match a
 	 [`(var ,x) (list x)]
@@ -611,9 +627,11 @@ variables
       (match instr
          [`(movq ,s ,d) (free-vars s)]
 	 [(or `(addq ,s ,d) `(subq ,s ,d) `(imulq ,s ,d)) 
-	  (set-union (free-vars s) (free-vars d))]
+	  (append (free-vars s) (free-vars d))]
 	 [`(negq ,d) (free-vars d)]
-	 [`(callq ,f) (set)]
+	 [`(callq ,f) (list)]
+         [`(return ,d) (free-vars d) ]
+        [`(retn) (list)]
 	 [else (error "read-vars unmatched" instr)]
 	 ))
   
@@ -623,7 +641,9 @@ variables
 	 [(or `(addq ,s ,d) `(subq ,s ,d) `(imulq ,s ,d)) 
 	  (free-vars d)]
 	 [`(negq ,d) (free-vars d)]
-	 [`(callq ,f) caller-save]
+	 [`(callq ,f) caller-save-registers]
+         ;[`(return ,d) (list) ]
+        [`(retn) (list)]
 	 [else (error "write-vars unmatched" instr)]
 	 ))
 
@@ -633,11 +653,28 @@ variables
   (let ([w (get-write-vars instr)]
         [r (get-read-vars  instr)]
         [the-nxt-line-lives-regs (car live-reg-list)])
-   ; (print instr)
-   ; (newline)
+    #|
+    (print instr)
+    (newline)
+
+    (print w)
+    (newline)
+
+    (print the-nxt-line-lives-regs)
+    (newline)
+    
+    (print r)
+    (newline)
+    
+    (print  (append (remv* w the-nxt-line-lives-regs) r) )
+    (newline)
+
+    (print "---")
+    (newline)
+|#
     (cons (remove-duplicates
            (append (remv* w the-nxt-line-lives-regs) r))
-          live-reg-list)))
+          live-reg-list))) 
 
 (define (rmv-at lst index)
   (define (rmv-at-t lst accu)
@@ -653,18 +690,18 @@ variables
 
 
 
-(define (uncover_live exp)
+(define (uncover-live exp)
   (match-define `(program ,vars ,codes ...) exp)
   ;(print codes)
-  (list* `program `(,vars ,(cdr (foldr get-live-regs `(()) codes))) codes))
+  (list* `program `(,vars ,(cdr (foldr get-live-regs `(()) codes))) codes)
+  )
 
 
 
 
 ;((v w x y z t.1 t.2) ((v) (w v) (w x) (w x) (w x y) (y w x) (y w z) (z y) (z t.1) (t.1 z) (t.1 t.2) (t.2) ()))
 
-
-(define (build-interference prog)
+#|(define (build-interference prog)
   (match-define `(program (,vars ,live-afters) ,code ...) prog)
   (define (make-adjacencies excludes live-after)
     (foldr
@@ -688,9 +725,194 @@ variables
          (list vars
                (undirected-graph (filter-not null?(foldl helper '() live-afters  code))))
          code))
+|#
+
 
 ;(uncover_live manual-test)
 
 
-(build-interference  (uncover_live manual-test))
+(define (build-interference prog)
+  (match-define `(program (,vars ,live-afters) ,code ...) prog)
+   ;(print live-afters)
+  (define (make-adjacencies excludes live-after)
+  
+    ;(newline)(newline)(print excludes ) (print "---")  (print live-after)(newline)(newline)
+  
+    (foldr
+     (lambda (v prev)
+       (cond [(list? (memq v excludes))
+              (cons (list (car excludes) `unknow) prev)]
+             [else (cons (list (car excludes) v) prev)]))
+     null
+     live-after))
+  (define (callq-helper label)
+    null)
+  (define (helper live-after instr prev)
+    (match instr
+      [`(movq (var ,s) (var ,d))
+       (append prev (make-adjacencies (list d s) live-after))]
+      [`(movq (var ,s) (reg ,d))
+       (append prev (make-adjacencies (list d s) live-after))]
+      [`(,_ ,_ (var ,d))
+       (begin
+         ;(print "!")(print d)
+         (append prev (make-adjacencies (list d) live-after))
+         )
+       ]
+      [`(callq ,label)
+       ;prev
+       (append 
+         (make-adjacencies (list `(reg rax)) live-after) 
+        prev)
 
+
+       ]
+      [_ prev]))
+  (list* 'program
+         (list vars
+               (undirected-graph (filter-not null? (foldl helper '() live-afters code))))
+         code))
+
+
+(define (print-graph prog)
+  (match-define `(program (,vars ,graph) ,code ...) prog)
+  (get-edges graph)
+  )
+
+(define td
+
+  `(program
+   (g.4 g.3 g.2 g.1 g.0)
+
+   (movq (int 1) (var g.4))
+  (negq (var g.4))
+  (movq (var g.4) (var g.3))
+  (negq (var g.3))
+  (movq (var g.3) (var g.2))
+  (negq (var g.2))
+  (movq (var g.2) (var g.1))
+  (negq (var g.1))
+  (movq (int 52) (var g.0))
+  (addq (var g.1) (var g.0))
+  (movq (var g.0) (reg rax))
+  (retn))
+  )
+;(print-graph (build-interference (uncover-live td)))
+
+;(print-graph (build-interference (uncover-live manual-test)))
+
+
+;get-read-vars get-write-vars
+#|
+`((v) (w v) (w x) (w x) (w x y) (y w x) (y z w) (z y) (z t.1) (t.1 z) (t.2 t.1) (t.2) ())  ;live after
+ `((movq (int 1) (var v))
+  (movq (int 46) (var w))
+  (movq (var v) (var x))
+  (addq (int 7) (var x))
+  (movq (var x) (var y))
+  (addq (int 4) (var y))
+  (movq (var x) (var z))
+  (addq (var w) (var z))
+  (movq (var y) (var t.1))
+  (negq (var t.1))
+  (movq (var z) (var t.2))
+  (addq (var t.1) (var t.2))
+  (movq (var t.2) (reg rax))) |#; code
+#|
+(define (t-fold lst1 lst2 lst3 init)
+  (+ lst1 lst2 lst3 init))
+
+(foldl t-fold 1 `(1 1) `(2 2) `(3 3))
+|#
+
+
+
+
+
+(define (color-graph g)
+  (define-values (i h) (coloring/greedy g))
+  h)
+
+
+
+;(define all-registers (append caller-save-registers callee-save-registers))
+
+(define (allocate-registers registers g)
+  ;(print(get-edges g) )
+  (define-values (i h) (coloring/greedy g))
+  ;(print h)
+  (let ([num-registers (length registers)])
+    (hash-map
+     h
+     (λ (key val)
+       (cond [(> num-registers val)
+              (begin
+               ; (print key)
+                (cons key `(reg ,(list-ref registers val)))
+                )]
+             [else (let ([spill (* -8 (add1 (- val num-registers)))])
+                     (begin
+                ;       (print key)
+                       (cons key `(deref rbp ,spill))))])))))
+;(build-interference (uncover-live manual-test))
+
+;(allocate-registers caller-save-registers (cadadr (build-interference (uncover-live manual-test))))
+
+
+  ;(print codes)
+  ;(foldr get-live-regs `(()) codes))
+
+
+(define (flat-select- exp)
+  (let-values ([(flattened asgns vars) (flatten exp `() `())])
+    ;(list* `program vars (append asgns (list (list `return flattened))) )
+    (let ([si (select-instructions (append asgns (list (list `return flattened))) `()) ])
+      (let ([prog (list* `program vars si)])
+        (let ([ul (uncover-live prog)])
+          (let ([bi (build-interference ul)])
+            ;(print (get-edges (cadadr bi)))
+            ;(print bi)
+            (let([regs (allocate-registers caller-save-registers (cadadr bi)  ) ])
+              ;(print regs)
+               (map (λ(code) (assign-homes code regs))  (cdr (cdr bi) ))
+             
+              ;(newline)
+             ; regs
+              ;bi
+              ;regs
+              ;(assign-homes code regs)
+              )
+            )
+        
+        )))))
+        ;  (let ([ul (uncover-live- )])
+          ;  si))))
+            
+            
+           ; (build-interference ul))
+      
+    ;(list* `program `(,vars ,(cdr (foldr get-live-regs `(()) codes))) codes)
+    ;(select-instructions asgns `())
+    ;(print-vars vars)
+    ;(print-asgns asgns)
+    ;(print-asgns (select-instructions asgns `()) )
+    ;(print (format "return ~a" flattened))
+;(build-interference  (uncover-live '(program (g.0) (movq (int 52) (var g.0)) (addq (int 1) (var g.0)) (movq (var g.0) (reg rax)) (retn)) ))
+;(get-edges (cadadr (build-interference  (uncover-live '(program (g.0) (movq (int 52) (var g.0)) (addq (int 1) (var g.0)) (movq (var g.0) (reg rax)) (retn)) ))))
+;(flat-select- `(+ 52 1))
+;(flat-select- `(+ 52 (- (- (- (- 1))))))
+;(uncover-live (flat-select- `(+ 52 (- (- (- (- 1)))))))
+
+
+;(flat-select- (- (- (- 1))))
+
+;(flat-select-  `(- (- (- 1))))
+
+;(flat-select- `( let ([x (+ 52 (- (- (- (- 1)))))] (+ x 2))))
+(flat-select- `( let ([x (+ 52 (- (- (- (- (read))))))]) (+ x 2))  )
+;(flat-select- `(+ 2 10))
+
+;(flat-select- `(- 10))
+;(get-edges(cadadr 
+;(build-interference (uncover-live '(program (g.0) (movq (int 52) (var g.0)) (addq (int 1) (var g.0)) (movq (var g.0) (reg rax)) (retn))))
+;))
