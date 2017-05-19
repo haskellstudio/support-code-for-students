@@ -227,7 +227,7 @@ residual ::= int | (+ int exp) | exp
              ;(newline)
              (if (equal? (car head) var)
                  (if (equal? (cadr head) `reg)
-                     (cddr head)
+                     (cdr head)
                      (cadr head))
                  (look-up tail var))
              )
@@ -511,13 +511,25 @@ variables
   (match inst
     [`(callq ,label) (list inst)]
     [`(,unaryOp ,arg ) (if (eqv? (car arg) `var)
-                           (list `(,unaryOp (#|local var|#l_ rbp,(look-up offsetMaps (cadr arg)))))
+                           (let ([val (look-up offsetMaps (cadr arg))])
+                             (if (equal? (car val) `reg)
+                                 (list unaryOp val)
+                                 (list `(,unaryOp (l_ rbp,(look-up offsetMaps (cadr arg)))))))
+                           ;(list `(,unaryOp (l_ rbp,(look-up offsetMaps (cadr arg)))))
                            (list inst))] ;`(,inst)
     [`(,binary-op ,arg1 ,arg2) (list `(,binary-op ,(if (eqv? (car arg1) `var)
-                                               `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg1)))
-                                               arg1)
+                                                       (let ([val (look-up offsetMaps (cadr arg1))])
+                                                         (if (equal? (car val) `reg)
+                                                               val
+                                                             `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg1)))))
+                                                       
+                                                       arg1)
                                            ,(if (eqv? (car arg2) `var)
-                                                `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg2)))
+                                                ;`(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg2)))
+                                                (let ([val (look-up offsetMaps (cadr arg2))])
+                                                  (if (equal? (car val) `reg)
+                                                      val
+                                                      `(#|local var|#l_ rbp ,(look-up offsetMaps (cadr arg2)))))
                                                 arg2)))]
     [`(retn) inst]
     ))
@@ -873,9 +885,9 @@ variables
             ;(print (get-edges (cadadr bi)))
             ;(print bi)
             (let([regs (allocate-registers caller-save-registers (cadadr bi)  ) ])
-              ;(print regs)
+              (print bi)
                (map (λ(code) (assign-homes code regs))  (cdr (cdr bi) ))
-             
+              
               ;(newline)
              ; regs
               ;bi
